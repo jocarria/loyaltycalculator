@@ -1,11 +1,25 @@
 # Loyalty Calculator
 
-Componente React (`src/LoyaltyCalculator.jsx`) para simular puntaje mensual, nivel alcanzado y acción comercial sugerida de un programa de fidelidad.
+Calculadora de fidelización en React para simular puntaje mensual, nivel alcanzado y acción sugerida.
 
-## Dependencias esperadas
-- React
-- lucide-react
-- TailwindCSS (clases utilitarias)
+## Requisitos
+- Node.js 18+
+- npm 9+
 
-## Uso
-Importar y renderizar `LoyaltyCalculator` dentro de tu app.
+## Ejecutar en vivo (local)
+```bash
+npm install
+npm run dev
+```
+Luego abrí el link que muestra Vite (normalmente `http://localhost:5173`).
+
+## Build de producción
+```bash
+npm run build
+npm run preview
+```
+
+## Estructura
+- `src/LoyaltyCalculator.jsx`: componente principal.
+- `src/main.jsx`: punto de entrada.
+- `src/styles.css`: estilos base + Tailwind.
