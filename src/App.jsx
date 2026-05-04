@@ -24,14 +24,18 @@ const LEVELS = [
     range: "900 - 1999 pts",
     min: 900,
     max: 1999,
-    description: "Máximo nivel de beneficios, experiencias y condiciones preferenciales.",
+    description:
+      "Máximo nivel de beneficios, experiencias y condiciones preferenciales.",
   },
 ];
 
 const MONEY_STEP_AHORRO = 100000;
 const MONEY_STEP_CONSUMO = 10000;
 const AHORRO_DAILY_CAP = 80;
+const DIAS_HABILES_CAP = 25;
 const MANTENER_CAP = 500;
+
+const REWARDS_URL = "https://www.macro.com.ar/cadapasocuenta";
 
 const formatNumber = (value) =>
   new Intl.NumberFormat("es-AR").format(Math.max(0, Number(value) || 0));
@@ -43,9 +47,36 @@ const formatMoney = (value) =>
     maximumFractionDigits: 0,
   }).format(Math.max(0, Number(value) || 0));
 
+const formatInputAmount = (value) => {
+  const cleanValue = String(value || "").replace(/\D/g, "");
+  if (!cleanValue) return "";
+  return new Intl.NumberFormat("es-AR").format(Number(cleanValue));
+};
+
+const parseAmount = (value) => {
+  return Number(String(value || "").replace(/\D/g, "")) || 0;
+};
+
 const clampCount = (value) => {
   const parsedValue = Number(value) || 0;
   return Math.min(Math.max(parsedValue, 0), 5);
+};
+
+const clampBusinessDays = (value) => {
+  const parsedValue = Number(value) || 0;
+  return Math.min(Math.max(parsedValue, 0), DIAS_HABILES_CAP);
+};
+
+const normalizeProductCount = (value) => {
+  const cleanValue = String(value || "").replace(/\D/g, "");
+  if (cleanValue === "") return "";
+  return String(Math.min(Number(cleanValue), 5));
+};
+
+const normalizeBusinessDays = (value) => {
+  const cleanValue = String(value || "").replace(/\D/g, "");
+  if (cleanValue === "") return "";
+  return String(Math.min(Number(cleanValue), DIAS_HABILES_CAP));
 };
 
 function App() {
@@ -64,7 +95,12 @@ function App() {
   });
 
   const [ahorroPesificado, setAhorroPesificado] = useState("");
+  const [diasHabilesAhorro, setDiasHabilesAhorro] = useState("");
   const [consumoMensual, setConsumoMensual] = useState("");
+
+  const ahorroNumber = parseAmount(ahorroPesificado);
+  const diasHabilesNumber = clampBusinessDays(diasHabilesAhorro);
+  const consumoNumber = parseAmount(consumoMensual);
 
   const puntosMantener = useMemo(() => {
     const clienteSelecta = mantener.clienteSelecta ? 25 : 0;
@@ -87,14 +123,18 @@ function App() {
     );
   }, [solicitar]);
 
-  const puntosAhorro = useMemo(() => {
-    const puntos = Math.floor((Number(ahorroPesificado) || 0) / MONEY_STEP_AHORRO);
+  const puntosAhorroDiarios = useMemo(() => {
+    const puntos = Math.floor(ahorroNumber / MONEY_STEP_AHORRO);
     return Math.min(puntos, AHORRO_DAILY_CAP);
-  }, [ahorroPesificado]);
+  }, [ahorroNumber]);
+
+  const puntosAhorro = useMemo(() => {
+    return puntosAhorroDiarios * diasHabilesNumber;
+  }, [puntosAhorroDiarios, diasHabilesNumber]);
 
   const puntosConsumo = useMemo(() => {
-    return Math.floor((Number(consumoMensual) || 0) / MONEY_STEP_CONSUMO);
-  }, [consumoMensual]);
+    return Math.floor(consumoNumber / MONEY_STEP_CONSUMO);
+  }, [consumoNumber]);
 
   const totalPuntos =
     puntosMantener + puntosSolicitar + puntosAhorro + puntosConsumo;
@@ -112,159 +152,194 @@ function App() {
   }, [totalPuntos]);
 
   const puntosFaltantes = proximoNivel ? proximoNivel.min - totalPuntos : 0;
-
   const progresoNivel3 = Math.min((totalPuntos / 900) * 100, 100);
-
   const mantenerCompletado = puntosMantener >= MANTENER_CAP;
-  const ahorroCompletado = puntosAhorro >= AHORRO_DAILY_CAP;
+  const ahorroCompletado =
+    puntosAhorroDiarios >= AHORRO_DAILY_CAP &&
+    diasHabilesNumber >= DIAS_HABILES_CAP;
 
   const pma = useMemo(() => {
     if (!proximoNivel) {
       return {
         meta: "Mantener nivel",
-        title: "Cliente en Nivel 3",
+        title: "Sostener la principalidad del cliente",
         points: 0,
         action:
-          "El cliente ya alcanzó el máximo nivel. La prioridad comercial es sostener sus hábitos de uso, tenencia e inversión para conservar beneficios.",
-        pitch:
-          "Ya estás en el máximo nivel del programa. La clave ahora es mantener tu vínculo con Macro para seguir accediendo a las mejores recompensas.",
+          "El cliente ya alcanzó el máximo nivel. La prioridad comercial es sostener saldos, inversiones, consumos y productos activos para conservar sus recompensas.",
       };
     }
 
     const candidates = [];
 
+    const addCandidate = (candidate) => {
+      if (candidate.points > 0) {
+        candidates.push(candidate);
+      }
+    };
+
+    if (!ahorroCompletado) {
+      const puntosDiariosDisponibles = AHORRO_DAILY_CAP - puntosAhorroDiarios;
+      const diasDisponibles = DIAS_HABILES_CAP - diasHabilesNumber;
+
+      if (puntosDiariosDisponibles > 0) {
+        const puntosAUsar = Math.min(
+          puntosFaltantes,
+          puntosDiariosDisponibles * Math.max(diasHabilesNumber, 1)
+        );
+
+        const puntosDiariosNecesarios = Math.ceil(
+          puntosAUsar / Math.max(diasHabilesNumber, 1)
+        );
+
+        const montoNecesario = puntosDiariosNecesarios * MONEY_STEP_AHORRO;
+
+        addCandidate({
+          meta: "Ahorrar e invertir",
+          title: "Potenciar saldo vista o inversiones",
+          points: puntosAUsar,
+          priority: 1,
+          action: `El cliente puede acercarse al próximo nivel incrementando aproximadamente ${formatMoney(
+            montoNecesario
+          )} de volumen diario en saldo vista, plazo fijo o FCI. Esta meta suma hasta 80 puntos diarios y se multiplica por los días hábiles cargados.`,
+        });
+      }
+
+      if (ahorroNumber === 0) {
+        addCandidate({
+          meta: "Ahorrar e invertir",
+          title: "Activar el hábito de ahorro e inversión",
+          points: Math.min(80, puntosFaltantes),
+          priority: 2,
+          action:
+            "El cliente todavía no registra volumen en ahorro o inversión. Una buena acción comercial es proponerle comenzar con saldo vista, plazo fijo o FCI para sumar puntos diarios durante el mes.",
+        });
+      }
+
+      if (puntosAhorroDiarios >= AHORRO_DAILY_CAP && diasDisponibles > 0) {
+        const puntosPorDiasAdicionales = Math.min(
+          puntosFaltantes,
+          AHORRO_DAILY_CAP * diasDisponibles
+        );
+
+        const diasNecesarios = Math.ceil(
+          puntosPorDiasAdicionales / AHORRO_DAILY_CAP
+        );
+
+        addCandidate({
+          meta: "Ahorrar e invertir",
+          title: "Ahorrar e invertir el ",
+          points: puntosPorDiasAdicionales,
+          priority: 1,
+          action: `El cliente ya alcanzó el tope diario de 80 puntos. La oportunidad es sostener ese volumen por más días hábiles: con ${diasNecesarios} día/s adicional/es podría sumar hasta ${formatNumber(
+            puntosPorDiasAdicionales
+          )} puntos más.`,
+        });
+      }
+
+      if (
+        ahorroNumber > 0 &&
+        puntosAhorroDiarios < AHORRO_DAILY_CAP &&
+        diasHabilesNumber > 0
+      ) {
+        const puntosSugeridos = Math.min(
+          puntosFaltantes,
+          (AHORRO_DAILY_CAP - puntosAhorroDiarios) * diasHabilesNumber
+        );
+
+        addCandidate({
+          meta: "Ahorrar e invertir",
+          title: "Maximizar la meta financiera mensual",
+          points: puntosSugeridos,
+          priority: 2,
+          action: `El cliente ya tiene volumen financiero, pero aún puede mejorar su puntaje diario. Si incrementa saldo vista o inversiones, puede sumar hasta ${formatNumber(
+            puntosSugeridos
+          )} puntos adicionales considerando los días hábiles cargados.`,
+        });
+      }
+    }
+
     if (!mantener.clienteSelecta) {
-      candidates.push({
+      addCandidate({
         meta: "Mantener tus productos",
         title: "Regularizar condición Selecta",
         points: 25,
-        priority: 4,
+        priority: 5,
         action:
           "Validar que el cliente cuente con Servicio Macro Selecta activo para sumar 25 puntos.",
-        pitch:
-          "Activando tu condición Selecta sumás puntos y fortalecés tu perfil dentro del programa.",
       });
     }
 
     if (!mantener.sueldo && !solicitar.altaSueldo) {
-      candidates.push({
+      addCandidate({
         meta: "Solicitar productos",
         title: "Alta de acreditación de sueldo/haberes",
         points: 200,
-        priority: 1,
-        action:
-          "Recomendar el alta de acreditación de sueldo/haberes. Es una de las acciones de mayor impacto para acelerar el salto de nivel.",
-        pitch:
-          "Si traés tu sueldo a Macro, sumás 200 puntos este mes y quedás mucho más cerca de desbloquear un mejor nivel.",
-      });
-    }
-
-    if (!mantener.sueldo && solicitar.altaSueldo && !mantener.sueldo) {
-      candidates.push({
-        meta: "Mantener tus productos",
-        title: "Mantener acreditación de sueldo/haberes",
-        points: 100,
         priority: 2,
         action:
-          "Una vez dada de alta la acreditación, sostenerla como producto activo suma 100 puntos dentro de la meta de tenencia.",
-        pitch:
-          "Manteniendo tu sueldo acreditado en Macro, reforzás tu vínculo mensual y seguís sumando para mejorar tu nivel.",
+          "Recomendar el alta de acreditación de sueldo/haberes. Es una acción de alto impacto porque suma 200 puntos en el mes.",
       });
     }
 
     if (!solicitar.seguroHogar) {
-      candidates.push({
+      addCandidate({
         meta: "Solicitar productos",
         title: "Alta de Seguro Hogar",
         points: 100,
-        priority: 2,
+        priority: 3,
         action:
-          "Ofrecer Seguro Hogar si el cliente aún no lo tiene. Suma 100 puntos en el mes y puede acercarlo al próximo nivel.",
-        pitch:
-          "Con el alta de Seguro Hogar sumás 100 puntos este mes y podés acercarte al próximo nivel de recompensas.",
+          "Ofrecer Seguro Hogar si el cliente aún no lo tiene. Suma 100 puntos y puede acelerar el salto de nivel.",
       });
     }
 
     if (!solicitar.altaTarjeta) {
-      candidates.push({
+      addCandidate({
         meta: "Solicitar productos",
         title: "Alta de Tarjeta de Crédito",
         points: 50,
-        priority: 3,
+        priority: 4,
         action:
           "Ofrecer alta de Tarjeta de Crédito titular y/o adicional si todavía no fue realizada.",
-        pitch:
-          "Con el alta de una tarjeta de crédito Macro sumás 50 puntos y ampliás tus posibilidades de acceder a más beneficios.",
-      });
-    }
-
-    const prestamosActuales = clampCount(mantener.prestamos);
-    if (prestamosActuales < 5 && !mantenerCompletado) {
-      candidates.push({
-        meta: "Mantener tus productos",
-        title: "Sumar préstamo en regularidad",
-        points: 25,
-        priority: 5,
-        action:
-          "Si corresponde comercialmente, evaluar préstamo en regularidad. Cada préstamo suma 25 puntos, con tope de 5.",
-        pitch:
-          "Un préstamo activo y en regularidad también suma puntos todos los meses dentro de tu vínculo con Macro.",
       });
     }
 
     const debitosActuales = clampCount(mantener.debitos);
     if (debitosActuales < 5 && !mantenerCompletado) {
-      candidates.push({
+      addCandidate({
         meta: "Mantener tus productos",
         title: "Adherir débitos automáticos",
         points: 25,
-        priority: 3,
+        priority: 4,
         action:
           "Recomendar adhesión de débitos automáticos. Cada débito suma 25 puntos, con tope de 5.",
-        pitch:
-          "Si adherís servicios al débito automático, sumás puntos todos los meses y te acercás al próximo nivel.",
       });
     }
 
     const segurosActuales = clampCount(mantener.seguros);
     if (segurosActuales < 5 && !mantenerCompletado) {
-      candidates.push({
+      addCandidate({
         meta: "Mantener tus productos",
         title: "Sumar seguros activos",
         points: 25,
-        priority: 4,
+        priority: 5,
         action:
           "Revisar oportunidad de sumar seguros activos. Cada seguro suma 25 puntos, con tope de 5.",
-        pitch:
-          "Cada seguro activo suma puntos mensuales y fortalece tu nivel dentro del programa.",
       });
     }
 
-    const ahorroRestante = AHORRO_DAILY_CAP - puntosAhorro;
-    if (ahorroRestante > 0) {
-      const puntosAUsar = Math.min(puntosFaltantes, ahorroRestante);
-      const montoNecesario = puntosAUsar * MONEY_STEP_AHORRO;
-
-      candidates.push({
-        meta: "Ahorrar e invertir",
-        title: "Incrementar saldo vista o inversiones",
-        points: puntosAUsar,
-        priority: 2,
-        action: `Para sumar ${formatNumber(
-          puntosAUsar
-        )} puntos, el cliente debería incrementar aproximadamente ${formatMoney(
-          montoNecesario
-        )} en saldo vista, plazo fijo o FCI. La meta tiene tope de 80 puntos diarios.`,
-        pitch: `Si incrementás tu saldo o inversiones en aproximadamente ${formatMoney(
-          montoNecesario
-        )}, podés sumar ${formatNumber(
-          puntosAUsar
-        )} puntos y acercarte al próximo nivel.`,
+    const prestamosActuales = clampCount(mantener.prestamos);
+    if (prestamosActuales < 5 && !mantenerCompletado) {
+      addCandidate({
+        meta: "Mantener tus productos",
+        title: "Sumar préstamo en regularidad",
+        points: 25,
+        priority: 6,
+        action:
+          "Si corresponde comercialmente, evaluar préstamo en regularidad. Cada préstamo suma 25 puntos, con tope de 5.",
       });
     }
 
     const montoConsumoNecesario = puntosFaltantes * MONEY_STEP_CONSUMO;
-    candidates.push({
+    addCandidate({
       meta: "Comprar y pagar",
       title: "Concentrar consumos y pagos en Macro",
       points: puntosFaltantes,
@@ -274,9 +349,6 @@ function App() {
       )} puntos faltantes concentrando aproximadamente ${formatMoney(
         montoConsumoNecesario
       )} en consumos, pagos, recargas o débitos.`,
-      pitch: `Si concentrás aproximadamente ${formatMoney(
-        montoConsumoNecesario
-      )} en consumos, pagos o recargas con Macro, podrías sumar los puntos necesarios para alcanzar ${proximoNivel.name}.`,
     });
 
     const rankedCandidates = candidates.sort((a, b) => {
@@ -285,18 +357,32 @@ function App() {
 
       if (aReaches !== bReaches) return aReaches - bReaches;
       if (a.priority !== b.priority) return a.priority - b.priority;
-
       return b.points - a.points;
     });
 
-    return rankedCandidates[0];
+    const dynamicIndex =
+      Math.abs(
+        totalPuntos +
+          puntosAhorro +
+          puntosAhorroDiarios +
+          puntosConsumo +
+          diasHabilesNumber
+      ) % Math.min(rankedCandidates.length, 3);
+
+    return rankedCandidates[dynamicIndex] || rankedCandidates[0];
   }, [
     proximoNivel,
     puntosFaltantes,
     mantener,
     solicitar,
     puntosAhorro,
+    puntosAhorroDiarios,
+    puntosConsumo,
+    totalPuntos,
+    ahorroNumber,
+    diasHabilesNumber,
     mantenerCompletado,
+    ahorroCompletado,
   ]);
 
   const resetCalculator = () => {
@@ -315,39 +401,106 @@ function App() {
     });
 
     setAhorroPesificado("");
+    setDiasHabilesAhorro("");
     setConsumoMensual("");
   };
 
   return (
     <main className="app">
-      <section className="hero">
+      <section className="hero compact-hero">
         <div className="hero-content">
           <span className="eyebrow">Banco Macro · Sistema de Niveles</span>
-          <h1>Calculadora Comercial Loyalty</h1>
+          <h1>Calculadora Niveles y Recompensas</h1>
           <p>
-            Simulá el avance de un cliente, identificá su brecha para subir de
-            nivel y obtené una próxima mejor acción comercial.
+            Simulá el avance del cliente y detectá la acción sugerida para
+            ayudarlo a subir de nivel.
           </p>
+
+          <div className="hero-badges">
+            <span>Tenencia</span>
+            <span>Uso</span>
+            <span>Niveles</span>
+            <span>Recompensas</span>
+          </div>
         </div>
 
-        <div className="hero-card">
-          <span className="hero-card-label">Resultado actual</span>
-          <h2>{nivelActual.name}</h2>
-          <p>{nivelActual.description}</p>
+        <div className="hero-card compact-points-card">
+          <span className="hero-card-label">Puntos acumulados</span>
+          <h2>{formatNumber(totalPuntos)}</h2>
+          <p>{nivelActual.name}</p>
 
           <div className="hero-points">
+            <strong>
+              {proximoNivel
+                ? `${formatNumber(puntosFaltantes)} pts`
+                : "0 pts"}
+            </strong>
+            <span>Puntos faltantes</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="sticky-progress">
+        <div className="sticky-left">
+          <div className="mini-level">
+            <strong>{nivelActual.name}</strong>
+          </div>
+
+          <div className="sticky-progress-content">
+            <div className="progress-copy">
+              <span>Progreso hacia Nivel 3</span>
+              <strong>{Math.round(progresoNivel3)}%</strong>
+            </div>
+
+            <div className="progress-bar sticky-bar">
+              <div style={{ width: `${progresoNivel3}%` }} />
+            </div>
+
+            <div className="level-checkpoints">
+              {LEVELS.map((level) => (
+                <div
+                  key={level.id}
+                  className={`checkpoint ${
+                    nivelActual.id >= level.id ? "unlocked" : ""
+                  }`}
+                >
+                  <span>{level.id}</span>
+                  <small>{level.name}</small>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky-right">
+          <div>
+            <span>Puntos</span>
             <strong>{formatNumber(totalPuntos)}</strong>
-            <span>puntos acumulados</span>
+          </div>
+
+          <div>
+            <span>Próximo objetivo</span>
+            <strong>{proximoNivel ? proximoNivel.name : "Sostener"}</strong>
+          </div>
+
+          <div>
+            <span>Puntos faltantes</span>
+            <strong>
+              {proximoNivel ? `${formatNumber(puntosFaltantes)} pts` : "0 pts"}
+            </strong>
           </div>
         </div>
       </section>
 
       <section className="main-grid">
-        <section className="calculator-panel">
+        <section className="calculator-panel compact-panel">
           <div className="panel-header">
             <div>
-              <h2>Datos del cliente</h2>
-              <p>Cargá la situación actual para calcular nivel y brecha.</p>
+              <h2>Tablero de metas</h2>
+              <p>
+                Cargá la situación actual del cliente y calculá puntos por
+                tenencia y uso.
+              </p>
             </div>
 
             <button onClick={resetCalculator} className="secondary-button">
@@ -358,16 +511,15 @@ function App() {
           <div className="macro-section">
             <div className="section-family">Tenencia</div>
 
-            <div className="goal-card">
+            <div className="goal-card compact-goal">
               <div className="goal-header">
                 <div>
-                  <span>Meta 01</span>
                   <h3>Mantener tus productos</h3>
                 </div>
                 <strong>Tope {MANTENER_CAP} pts</strong>
               </div>
 
-              <label className="check-row">
+              <label className="check-row compact-row">
                 <input
                   type="checkbox"
                   checked={mantener.clienteSelecta}
@@ -382,7 +534,7 @@ function App() {
                 <strong>25 pts</strong>
               </label>
 
-              <label className="check-row">
+              <label className="check-row compact-row">
                 <input
                   type="checkbox"
                   checked={mantener.sueldo}
@@ -394,18 +546,17 @@ function App() {
                 <strong>100 pts</strong>
               </label>
 
-              <div className="input-grid">
+              <div className="input-grid compact-input-grid">
                 <label>
                   Préstamos
                   <input
-                    type="number"
-                    min="0"
-                    max="5"
+                    type="text"
+                    inputMode="numeric"
                     value={mantener.prestamos}
                     onChange={(e) =>
                       setMantener({
                         ...mantener,
-                        prestamos: e.target.value,
+                        prestamos: normalizeProductCount(e.target.value),
                       })
                     }
                   />
@@ -415,14 +566,13 @@ function App() {
                 <label>
                   Débitos automáticos
                   <input
-                    type="number"
-                    min="0"
-                    max="5"
+                    type="text"
+                    inputMode="numeric"
                     value={mantener.debitos}
                     onChange={(e) =>
                       setMantener({
                         ...mantener,
-                        debitos: e.target.value,
+                        debitos: normalizeProductCount(e.target.value),
                       })
                     }
                   />
@@ -432,14 +582,13 @@ function App() {
                 <label>
                   Seguros
                   <input
-                    type="number"
-                    min="0"
-                    max="5"
+                    type="text"
+                    inputMode="numeric"
                     value={mantener.seguros}
                     onChange={(e) =>
                       setMantener({
                         ...mantener,
-                        seguros: e.target.value,
+                        seguros: normalizeProductCount(e.target.value),
                       })
                     }
                   />
@@ -448,16 +597,15 @@ function App() {
               </div>
             </div>
 
-            <div className="goal-card">
+            <div className="goal-card compact-goal">
               <div className="goal-header">
                 <div>
-                  <span>Meta 02</span>
                   <h3>Solicitar productos</h3>
                 </div>
                 <strong>Altas del mes</strong>
               </div>
 
-              <label className="check-row">
+              <label className="check-row compact-row">
                 <input
                   type="checkbox"
                   checked={solicitar.altaSueldo}
@@ -472,7 +620,7 @@ function App() {
                 <strong>200 pts</strong>
               </label>
 
-              <label className="check-row">
+              <label className="check-row compact-row">
                 <input
                   type="checkbox"
                   checked={solicitar.altaTarjeta}
@@ -487,7 +635,7 @@ function App() {
                 <strong>50 pts</strong>
               </label>
 
-              <label className="check-row">
+              <label className="check-row compact-row">
                 <input
                   type="checkbox"
                   checked={solicitar.seguroHogar}
@@ -507,95 +655,112 @@ function App() {
           <div className="macro-section">
             <div className="section-family">Uso</div>
 
-            <div className="goal-card">
-              <div className="goal-header">
-                <div>
-                  <span>Meta 03</span>
-                  <h3>Ahorrar e invertir</h3>
+            <div className="usage-grid">
+              <div className="goal-card compact-goal">
+                <div className="goal-header">
+                  <div>
+                    <h3>Ahorrar e invertir</h3>
+                  </div>
+                  <strong>Tope 80 pts diarios</strong>
                 </div>
-                <strong>Tope 80 pts diarios</strong>
+
+                <p className="goal-copy">
+                  Saldo vista, plazo fijo y FCI. Cargar monto total pesificado.
+                </p>
+
+                <label className="money-input">
+                  Volumen diario
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={ahorroPesificado}
+                    onChange={(e) =>
+                      setAhorroPesificado(formatInputAmount(e.target.value))
+                    }
+                    placeholder="Ej: 8.000.000"
+                  />
+                  <small>Cada $100.000 = 1 punto · Tope 80 pts diarios</small>
+                </label>
+
+                <label className="money-input">
+                  Días hábiles del mes
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={diasHabilesAhorro}
+                    onChange={(e) =>
+                      setDiasHabilesAhorro(
+                        normalizeBusinessDays(e.target.value)
+                      )
+                    }
+                    placeholder="Ej: 5"
+                  />
+                  <small>Tope 25 días hábiles</small>
+                </label>
               </div>
 
-              <p className="goal-copy">
-                Considera saldo vista e inversiones en Banco Macro: caja de
-                ahorro, plazo fijo y FCI. Cargar monto total pesificado.
-              </p>
-
-              <label className="money-input">
-                Volumen total acumulado diario
-                <input
-                  type="number"
-                  min="0"
-                  value={ahorroPesificado}
-                  onChange={(e) => setAhorroPesificado(e.target.value)}
-                  placeholder="Ej: 2.500.000"
-                />
-                <small>Cada $100.000 = 1 punto</small>
-              </label>
-            </div>
-
-            <div className="goal-card">
-              <div className="goal-header">
-                <div>
-                  <span>Meta 04</span>
-                  <h3>Comprar y pagar</h3>
+              <div className="goal-card compact-goal">
+                <div className="goal-header">
+                  <div>
+                    <h3>Comprar y pagar</h3>
+                  </div>
+                  <strong>Sin tope</strong>
                 </div>
-                <strong>Sin tope</strong>
+
+                <p className="goal-copy">
+                  TC, TD, PCT, débitos, servicios y recargas.
+                </p>
+
+                <label className="money-input">
+                  Volumen mensual
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={consumoMensual}
+                    onChange={(e) =>
+                      setConsumoMensual(formatInputAmount(e.target.value))
+                    }
+                    placeholder="Ej: 850.000"
+                  />
+                  <small>Cada $10.000 = 1 punto</small>
+                </label>
               </div>
-
-              <p className="goal-copy">
-                Considera consumos con TC, TD, PCT, débitos automáticos, pago de
-                servicios y recargas. Cargar volumen mensual pesificado.
-              </p>
-
-              <label className="money-input">
-                Volumen total acumulado mensual
-                <input
-                  type="number"
-                  min="0"
-                  value={consumoMensual}
-                  onChange={(e) => setConsumoMensual(e.target.value)}
-                  placeholder="Ej: 850.000"
-                />
-                <small>Cada $10.000 = 1 punto</small>
-              </label>
             </div>
           </div>
         </section>
 
-        <aside className="result-panel">
-          <div className="result-card primary-result">
-            <span>Nivel actual</span>
-            <h2>{nivelActual.name}</h2>
-            <p>{nivelActual.range}</p>
-          </div>
+        <aside className="result-panel compact-result-panel">
+          <div className="levels-card featured-levels">
+            <h3>Progresión de niveles</h3>
 
-          <div className="progress-block">
-            <div className="progress-top">
-              <span>Progreso hacia Nivel 3</span>
-              <strong>{Math.round(progresoNivel3)}%</strong>
-            </div>
-
-            <div className="progress-bar">
-              <div style={{ width: `${progresoNivel3}%` }} />
-            </div>
+            {LEVELS.map((level) => (
+              <div
+                key={level.id}
+                className={`level-row ${
+                  nivelActual.id === level.id ? "active" : ""
+                }`}
+              >
+                <span>{level.name}</span>
+                <strong>{level.range}</strong>
+              </div>
+            ))}
           </div>
 
           {proximoNivel ? (
             <div className="gap-card">
-              <span>Brecha comercial</span>
+              <span>Puntos faltantes</span>
               <h3>
                 Faltan {formatNumber(puntosFaltantes)} puntos para{" "}
                 {proximoNivel.name}
               </h3>
               <p>
-                Objetivo inmediato: identificar la acción más simple para cerrar
-                la brecha y desbloquear mejores recompensas.
+                Identificar la acción más simple para cerrar la brecha y
+                desbloquear mejores recompensas.
               </p>
             </div>
           ) : (
             <div className="gap-card success">
-              <span>Brecha comercial</span>
+              <span>Puntos faltantes</span>
               <h3>Cliente en máximo nivel</h3>
               <p>
                 La oportunidad está en sostener principalidad, recurrencia y uso
@@ -605,19 +770,26 @@ function App() {
           )}
 
           <div className="pma-card">
-            <span>Próxima mejor acción</span>
+            <span>Acción sugerida</span>
             <h3>{pma.title}</h3>
             <div className="pma-meta">{pma.meta}</div>
             <p>{pma.action}</p>
           </div>
 
-          <div className="pitch-card">
-            <span>Speech sugerido</span>
-            <p>“{pma.pitch}”</p>
+          <div className="rewards-card">
+            <span>Recompensas por nivel</span>
+            <h3>Consultá los beneficios disponibles</h3>
+            <p>
+              Accedé al detalle actualizado de recompensas, beneficios y
+              condiciones por nivel.
+            </p>
+            <a href={REWARDS_URL} target="_blank" rel="noreferrer">
+              Ver recompensas
+            </a>
           </div>
 
           <div className="breakdown-card">
-            <h3>Detalle de puntos</h3>
+            <h3>Puntos por meta</h3>
 
             <div>
               <span>Mantener productos</span>
@@ -640,25 +812,9 @@ function App() {
             </div>
 
             <div className="total-row">
-              <span>Total</span>
+              <span>Total puntos</span>
               <strong>{formatNumber(totalPuntos)} pts</strong>
             </div>
-          </div>
-
-          <div className="levels-card">
-            <h3>Progresión de niveles</h3>
-
-            {LEVELS.map((level) => (
-              <div
-                key={level.id}
-                className={`level-row ${
-                  nivelActual.id === level.id ? "active" : ""
-                }`}
-              >
-                <span>{level.name}</span>
-                <strong>{level.range}</strong>
-              </div>
-            ))}
           </div>
         </aside>
       </section>
