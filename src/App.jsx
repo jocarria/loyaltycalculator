@@ -227,7 +227,7 @@ function App() {
 
         addCandidate({
           meta: "Ahorrar e invertir",
-          title: "Ahorrar e invertir el ",
+          title: "Sostener el saldo más días hábiles",
           points: puntosPorDiasAdicionales,
           priority: 1,
           action: `El cliente ya alcanzó el tope diario de 80 puntos. La oportunidad es sostener ese volumen por más días hábiles: con ${diasNecesarios} día/s adicional/es podría sumar hasta ${formatNumber(
@@ -408,34 +408,41 @@ function App() {
   return (
     <main className="app">
       <section className="hero compact-hero">
-        <div className="hero-content">
+        <div className="hero-content compact-hero-content">
           <span className="eyebrow">Banco Macro · Sistema de Niveles</span>
           <h1>Calculadora Niveles y Recompensas</h1>
           <p>
             Simulá el avance del cliente y detectá la acción sugerida para
             ayudarlo a subir de nivel.
           </p>
-
-          <div className="hero-badges">
-            <span>Tenencia</span>
-            <span>Uso</span>
-            <span>Niveles</span>
-            <span>Recompensas</span>
-          </div>
         </div>
 
-        <div className="hero-card compact-points-card">
-          <span className="hero-card-label">Puntos acumulados</span>
-          <h2>{formatNumber(totalPuntos)}</h2>
-          <p>{nivelActual.name}</p>
+        <div className="breakdown-card top-breakdown-card">
+          <h3>Puntos por meta</h3>
 
-          <div className="hero-points">
-            <strong>
-              {proximoNivel
-                ? `${formatNumber(puntosFaltantes)} pts`
-                : "0 pts"}
-            </strong>
-            <span>Puntos faltantes</span>
+          <div>
+            <span>Mantener productos</span>
+            <strong>{formatNumber(puntosMantener)} pts</strong>
+          </div>
+
+          <div>
+            <span>Solicitar productos</span>
+            <strong>{formatNumber(puntosSolicitar)} pts</strong>
+          </div>
+
+          <div>
+            <span>Ahorrar e invertir</span>
+            <strong>{formatNumber(puntosAhorro)} pts</strong>
+          </div>
+
+          <div>
+            <span>Comprar y pagar</span>
+            <strong>{formatNumber(puntosConsumo)} pts</strong>
+          </div>
+
+          <div className="total-row">
+            <span>Total puntos</span>
+            <strong>{formatNumber(totalPuntos)} pts</strong>
           </div>
         </div>
       </section>
@@ -746,29 +753,6 @@ function App() {
             ))}
           </div>
 
-          {proximoNivel ? (
-            <div className="gap-card">
-              <span>Puntos faltantes</span>
-              <h3>
-                Faltan {formatNumber(puntosFaltantes)} puntos para{" "}
-                {proximoNivel.name}
-              </h3>
-              <p>
-                Identificar la acción más simple para cerrar la brecha y
-                desbloquear mejores recompensas.
-              </p>
-            </div>
-          ) : (
-            <div className="gap-card success">
-              <span>Puntos faltantes</span>
-              <h3>Cliente en máximo nivel</h3>
-              <p>
-                La oportunidad está en sostener principalidad, recurrencia y uso
-                mensual.
-              </p>
-            </div>
-          )}
-
           <div className="pma-card">
             <span>Acción sugerida</span>
             <h3>{pma.title}</h3>
@@ -786,35 +770,6 @@ function App() {
             <a href={REWARDS_URL} target="_blank" rel="noreferrer">
               Ver recompensas
             </a>
-          </div>
-
-          <div className="breakdown-card">
-            <h3>Puntos por meta</h3>
-
-            <div>
-              <span>Mantener productos</span>
-              <strong>{formatNumber(puntosMantener)} pts</strong>
-            </div>
-
-            <div>
-              <span>Solicitar productos</span>
-              <strong>{formatNumber(puntosSolicitar)} pts</strong>
-            </div>
-
-            <div>
-              <span>Ahorrar e invertir</span>
-              <strong>{formatNumber(puntosAhorro)} pts</strong>
-            </div>
-
-            <div>
-              <span>Comprar y pagar</span>
-              <strong>{formatNumber(puntosConsumo)} pts</strong>
-            </div>
-
-            <div className="total-row">
-              <span>Total puntos</span>
-              <strong>{formatNumber(totalPuntos)} pts</strong>
-            </div>
           </div>
         </aside>
       </section>
