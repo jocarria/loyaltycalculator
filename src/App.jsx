@@ -34,6 +34,7 @@ const MONEY_STEP_CONSUMO = 10000;
 const AHORRO_DAILY_CAP = 80;
 const DIAS_HABILES_CAP = 25;
 const MANTENER_CAP = 500;
+const PUNTOS_ALTA_TARJETA = 50;
 
 const REWARDS_URL = "https://www.macro.com.ar/cadapasocuenta";
 
@@ -73,6 +74,12 @@ const normalizeProductCount = (value) => {
   return String(Math.min(Number(cleanValue), 5));
 };
 
+const normalizeUnlimitedCount = (value) => {
+  const cleanValue = String(value || "").replace(/\D/g, "");
+  if (cleanValue === "") return 0;
+  return Number(cleanValue);
+};
+
 const normalizeBusinessDays = (value) => {
   const cleanValue = String(value || "").replace(/\D/g, "");
   if (cleanValue === "") return "";
@@ -90,7 +97,7 @@ function App() {
 
   const [solicitar, setSolicitar] = useState({
     altaSueldo: false,
-    altaTarjeta: false,
+    altaTarjetaCantidad: 0,
     seguroHogar: false,
   });
 
@@ -101,6 +108,10 @@ function App() {
   const ahorroNumber = parseAmount(ahorroPesificado);
   const diasHabilesNumber = clampBusinessDays(diasHabilesAhorro);
   const consumoNumber = parseAmount(consumoMensual);
+  const altaTarjetaCantidad = Math.max(
+    0,
+    Number(solicitar.altaTarjetaCantidad) || 0
+  );
 
   const puntosMantener = useMemo(() => {
     const clienteSelecta = mantener.clienteSelecta ? 25 : 0;
@@ -118,10 +129,10 @@ function App() {
   const puntosSolicitar = useMemo(() => {
     return (
       (solicitar.altaSueldo ? 200 : 0) +
-      (solicitar.altaTarjeta ? 50 : 0) +
+      altaTarjetaCantidad * PUNTOS_ALTA_TARJETA +
       (solicitar.seguroHogar ? 100 : 0)
     );
-  }, [solicitar]);
+  }, [solicitar, altaTarjetaCantidad]);
 
   const puntosAhorroDiarios = useMemo(() => {
     const puntos = Math.floor(ahorroNumber / MONEY_STEP_AHORRO);
@@ -157,6 +168,20 @@ function App() {
   const ahorroCompletado =
     puntosAhorroDiarios >= AHORRO_DAILY_CAP &&
     diasHabilesNumber >= DIAS_HABILES_CAP;
+
+  const sumarTarjeta = () => {
+    setSolicitar({
+      ...solicitar,
+      altaTarjetaCantidad: altaTarjetaCantidad + 1,
+    });
+  };
+
+  const restarTarjeta = () => {
+    setSolicitar({
+      ...solicitar,
+      altaTarjetaCantidad: Math.max(altaTarjetaCantidad - 1, 0),
+    });
+  };
 
   const pma = useMemo(() => {
     if (!proximoNivel) {
@@ -291,14 +316,14 @@ function App() {
       });
     }
 
-    if (!solicitar.altaTarjeta) {
+    if (altaTarjetaCantidad === 0) {
       addCandidate({
         meta: "Solicitar productos",
         title: "Alta de Tarjeta de Crédito",
         points: 50,
         priority: 4,
         action:
-          "Ofrecer alta de Tarjeta de Crédito titular y/o adicional si todavía no fue realizada.",
+          "Ofrecer alta de Tarjeta de Crédito titular y/o adicional si todavía no fue realizada. Cada nueva tarjeta suma 50 puntos, sin tope mensual.",
       });
     }
 
@@ -375,6 +400,7 @@ function App() {
     puntosFaltantes,
     mantener,
     solicitar,
+    altaTarjetaCantidad,
     puntosAhorro,
     puntosAhorroDiarios,
     puntosConsumo,
@@ -396,7 +422,7 @@ function App() {
 
     setSolicitar({
       altaSueldo: false,
-      altaTarjeta: false,
+      altaTarjetaCantidad: 0,
       seguroHogar: false,
     });
 
@@ -627,20 +653,90 @@ function App() {
                 <strong>200 pts</strong>
               </label>
 
-              <label className="check-row compact-row">
+              <div className="check-row compact-row">
                 <input
                   type="checkbox"
-                  checked={solicitar.altaTarjeta}
+                  checked={altaTarjetaCantidad > 0}
                   onChange={(e) =>
                     setSolicitar({
                       ...solicitar,
-                      altaTarjeta: e.target.checked,
+                      altaTarjetaCantidad: e.target.checked ? 1 : 0,
                     })
                   }
                 />
+
                 <span>Alta de Tarjeta de Crédito titular y/o adicional</span>
-                <strong>50 pts</strong>
-              </label>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    marginLeft: "auto",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={restarTarjeta}
+                    style={{
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "999px",
+                      border: "1px solid #d8deea",
+                      background: "#ffffff",
+                      color: "#102b66",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    -
+                  </button>
+
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={altaTarjetaCantidad}
+                    onChange={(e) =>
+                      setSolicitar({
+                        ...solicitar,
+                        altaTarjetaCantidad: normalizeUnlimitedCount(
+                          e.target.value
+                        ),
+                      })
+                    }
+                    style={{
+                      width: "44px",
+                      height: "28px",
+                      borderRadius: "10px",
+                      border: "1px solid #d8deea",
+                      textAlign: "center",
+                      fontWeight: 800,
+                      color: "#102b66",
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={sumarTarjeta}
+                    style={{
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "999px",
+                      border: "1px solid #102b66",
+                      background: "#102b66",
+                      color: "#ffffff",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    +
+                  </button>
+
+                  <strong style={{ minWidth: "72px", textAlign: "right" }}>
+                    {formatNumber(altaTarjetaCantidad * PUNTOS_ALTA_TARJETA)} pts
+                  </strong>
+                </div>
+              </div>
 
               <label className="check-row compact-row">
                 <input
